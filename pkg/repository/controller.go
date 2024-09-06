@@ -96,25 +96,3 @@ func DeleteUser(db *sql.DB, id string) error {
 	
 	return err
 }
-
-func CreateUser_Google( db *sql.DB, user models.User) error {
-	id, err := uuid.NewUUID()
-	if err != nil{
-		return err
-	}
-
-	// Convert id to string and set it on the user 
-	user.Id = id.String()
-	stmt, err := db.Prepare("INSERT INTO users (id, email, password, name, category, DOB, Bio, Avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-	if err != nil{
-		return err
-	}
-	defer stmt.Close()	
-
-	_, err = stmt.Exec(user.Id, user.Email, user.Password, user.Name, user.Category, user.DOB, user.Bio, user.Avatar)
-
-	if err != nil{
-		return err
-	}
-	return nil
-}

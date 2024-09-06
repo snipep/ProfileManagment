@@ -13,12 +13,3 @@ type User struct {
 	Bio string
 	Avatar string
 }
-
-type GoogleUserInfo struct {
-	Id string
-	Email string
-	Name string
-	GivenName string
-	FamilyName string
-	Avatar string
-}
