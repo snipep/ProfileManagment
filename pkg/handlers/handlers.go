@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
+	"github.com/snipep/Profile_Managment_Application/pkg/Oauth"
 	"github.com/snipep/Profile_Managment_Application/pkg/models"
 	"github.com/snipep/Profile_Managment_Application/pkg/repository"
 	"golang.org/x/crypto/bcrypt"
@@ -379,5 +382,97 @@ func LogoutHandler(store *sessions.CookieStore) http.HandlerFunc {
 
 		// Redirect to login page 
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	}
+}
+
+
+func HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("---------got in google login--------------")
+	url := Oauth.Oauth2Config.AuthCodeURL(Oauthstring)
+	fmt.Println("url: ", url)
+    http.Redirect(w, r, url, http.StatusTemporaryRedirect)
+}
+
+func GoogleCallback(db *sql.DB, store *sessions.CookieStore) http.HandlerFunc {
+	return func (w http.ResponseWriter, r *http.Request)  {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.FormValue("state") != Oauthstring {
+			fmt.Println("state is not valid")
+			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+			return
+		}
+		fmt.Println("--------------1----------")
+
+		token, err := Oauth.Oauth2Config.Exchange(context.Background(), r.FormValue("code"))
+		if err != nil {
+			log.Fatalf("oauthConf.Exchange() failed with '%s'\n", err)
+			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+			return
+		}
+		fmt.Println("----------------2--------------------")
+		resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token="+token.AccessToken)
+		if err != nil{
+			fmt.Printf("could not create get request: %s\n", err.Error())
+			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+			return
+		}
+		defer resp.Body.Close()
+		contentbin, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("Error reading response: %s\n", err.Error())
+			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+			return
+		}		
+		// Parse the JSON response into GoogleUserInfo struct
+		var userInfo models.GoogleUserInfo
+		err = json.Unmarshal(contentbin, &userInfo)
+		if err != nil {
+			fmt.Printf("Error parsing user info: %s\n", err.Error())
+			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+			return
+		}
+		
+		var user1 models.User
+		user, err := repository.GetUserByEmail(db, userInfo.Email)
+		if err != nil{
+			if err == sql.ErrNoRows{
+				// Create user in the database 				
+				user1.Name = userInfo.Name
+				user1.Email = userInfo.Email
+				// Set default values 
+				user1.DOB = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+				user1.Bio = "Bio goes here"
+				user1.Avatar = ""
+	
+				err = repository.CreateUser(db, user1)
+				if err != nil{
+					fmt.Printf("Error parsing user info: %s\n", err.Error())
+					return
+					}
+				}else{
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					w.Header().Set("HX-Location", "/register")
+					w.WriteHeader(http.StatusNoContent)
+				}
+			}
+			
+		// Create session and authenticate the user 
+		session, err := store.Get(r, "logged-in-user")
+		if err != nil{
+			http.Error(w, "Server error", http.StatusInternalServerError)
+			return 
+		}
+		session.Values["user_id"] = user.Id
+		if err := session.Save(r, w);err != nil{
+			http.Error(w, "Error saving session", http.StatusInternalServerError)
+			return 
+		}
+
+		// Set HX-Location header and return 204 No Content status 
+		w.Header().Set("HX-Location", "/")
+		w.WriteHeader(http.StatusNoContent)
 	}
 }

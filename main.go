@@ -76,7 +76,10 @@ func main()  {
 	grouter.HandleFunc("/upload-avatar", handlers.UploadAvatarHandler(db, tmpl, Store)).Methods("POST")
 	// Handle logout page 
 	grouter.HandleFunc("/logout", handlers.LogoutHandler(Store)).Methods("GET")
-
+	//Handle Google login page
+	grouter.HandleFunc("/auth/google", handlers.HandleGoogleLogin).Methods("GET")
+	//handle Google callback {process}
+	grouter.HandleFunc("/auth.google.callback", handlers.GoogleCallback(db, Store)).Methods("GET")
 	
 	fmt.Println("----Server is running on PORT:4000----")
 	http.ListenAndServe(":4000", grouter)
