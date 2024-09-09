@@ -439,7 +439,7 @@ func GoogleCallback(db *sql.DB, tmpl *template.Template, store *sessions.CookieS
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}
-    	fmt.Printf("User Info: %+v\n", userInfo)
+    	// fmt.Printf("User Info: %+v\n", userInfo)
 
 		// Check if user exists in DB
 		user, err := repository.GetUserByEmail(db, userInfo.Email)
