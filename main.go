@@ -79,7 +79,7 @@ func main()  {
 	//Handle Google login page
 	grouter.HandleFunc("/auth/google", handlers.HandleGoogleLogin).Methods("GET")
 	//handle Google callback {process}
-	grouter.HandleFunc("/auth.google.callback", handlers.GoogleCallback(db, Store)).Methods("GET")
+	grouter.HandleFunc("/auth/google/callback", handlers.GoogleCallback(db, tmpl, Store)).Methods("GET")
 	
 	fmt.Println("----Server is running on PORT:4000----")
 	http.ListenAndServe(":4000", grouter)

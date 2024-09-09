@@ -1,4 +1,10 @@
 {{ define "0auth" }}
-    <button hx-get="/auth/google" hx-target="#errors" class="btn btn-primary">Sign-in With Google</button>
+    <button id="google-btn" hx-target="#errors" class="btn btn-primary" hx-redirect="true">Sign-in With Google</button>
+
+    <script>
+        document.getElementById('google-btn').addEventListener('click', function() {
+            window.location.href = 'http://localhost:4000/auth/google'; // Redirect to the Google authentication endpoint
+        });
+    </script>
 {{ end }}
 

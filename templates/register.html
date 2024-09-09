@@ -14,11 +14,11 @@
                 </div>
                 <div class="mb-3">
                     <label for="email" class="form-label">Email Address</label>
-                    <input type="email" name="email" class="form-control" id="email" placeholder="Enter email">
+                    <input type="email" name="email" class="form-control" required id="email" autocomplete="username" placeholder="Enter email">
                 </div>
                 <div class="mb-3">
                     <label for="password" class="form-label">Password</label>
-                    <input type="password" name="password" class="form-control" id="password" placeholder="Password">
+                    <input type="password" name="password" class="form-control" required id="password" autocomplete="current-password" placeholder="Password">
                 </div>
                 <div class="mb-3">
                     <label for="category" class="form-label">Category</label>
@@ -27,9 +27,11 @@
                         <option value="2">Instructor</option>
                     </select>
                 </div>
-                <button 
+                <button id
                     hx-post="/register"     
                     hx-target="#errors" class="btn btn-primary">Register</button>
+                
+                {{ template "0auth"}}
             </form>
         </div>
     </div>

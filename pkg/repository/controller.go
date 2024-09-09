@@ -2,9 +2,11 @@ package repository
 
 import (
 	"database/sql"
+	"log"
 
 	"github.com/google/uuid"
 	"github.com/snipep/Profile_Managment_Application/pkg/models"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func GetAllUsers(db *sql.DB,) ([]models.User, error) {
@@ -52,7 +54,7 @@ func GetUserByEmail(db *sql.DB, email string) (models.User, error) {
 
 	err := db.QueryRow("SELECT id, email, password, name, category, dob, bio, avatar FROM users WHERE email = ?", email).Scan(&user.Id, &user.Email, &user.Password, &user.Name, &user.Category, &user.DOB, &user.Bio, &user.Avatar)
 	if err != nil{
-		return user, nil
+		return user, err
 	}
 
 	return user, nil	
@@ -95,4 +97,35 @@ func DeleteUser(db *sql.DB, id string) error {
 	_, err := db.Exec("DELETE FROM users WHERE is = ? ", id)
 	
 	return err
+}
+
+func CreateGoogleUser( db *sql.DB, user models.User) error {
+	id, err := uuid.NewUUID()
+	if err != nil{
+		return err
+	}
+
+	// Convert id to string and set it on the user 
+	user.Id = id.String()
+
+	// Hash the password 
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil{
+		log.Fatal(err)
+	}
+	// Convert password to string and set it on the user 
+	user.Password = string(hashedPassword)
+
+	stmt, err := db.Prepare("INSERT INTO users (id, email, password, name, category, DOB, Bio, Avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+	if err != nil{
+		return err
+	}
+	defer stmt.Close()	
+
+	_, err = stmt.Exec(user.Id, user.Email, user.Password, user.Name, user.Category, user.DOB, user.Bio, user.Avatar)
+
+	if err != nil{
+		return err
+	}
+	return nil
 }

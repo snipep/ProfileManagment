@@ -387,24 +387,28 @@ func LogoutHandler(store *sessions.CookieStore) http.HandlerFunc {
 
 
 func HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("---------got in google login--------------")
 	url := Oauth.Oauth2Config.AuthCodeURL(Oauthstring)
-	fmt.Println("url: ", url)
     http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
-func GoogleCallback(db *sql.DB, store *sessions.CookieStore) http.HandlerFunc {
+func GoogleCallback(db *sql.DB, tmpl *template.Template, store *sessions.CookieStore) http.HandlerFunc {
 	return func (w http.ResponseWriter, r *http.Request)  {
+		// Add CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		// Handle OPTIONS preflight request
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 
 		if r.FormValue("state") != Oauthstring {
 			fmt.Println("state is not valid")
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}
-		fmt.Println("--------------1----------")
 
 		token, err := Oauth.Oauth2Config.Exchange(context.Background(), r.FormValue("code"))
 		if err != nil {
@@ -412,7 +416,7 @@ func GoogleCallback(db *sql.DB, store *sessions.CookieStore) http.HandlerFunc {
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}
-		fmt.Println("----------------2--------------------")
+
 		resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token="+token.AccessToken)
 		if err != nil{
 			fmt.Printf("could not create get request: %s\n", err.Error())
@@ -426,6 +430,7 @@ func GoogleCallback(db *sql.DB, store *sessions.CookieStore) http.HandlerFunc {
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}		
+
 		// Parse the JSON response into GoogleUserInfo struct
 		var userInfo models.GoogleUserInfo
 		err = json.Unmarshal(contentbin, &userInfo)
@@ -434,45 +439,77 @@ func GoogleCallback(db *sql.DB, store *sessions.CookieStore) http.HandlerFunc {
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}
-		
-		var user1 models.User
+    	fmt.Printf("User Info: %+v\n", userInfo)
+
+		// Check if user exists in DB
 		user, err := repository.GetUserByEmail(db, userInfo.Email)
-		if err != nil{
-			if err == sql.ErrNoRows{
-				// Create user in the database 				
-				user1.Name = userInfo.Name
-				user1.Email = userInfo.Email
-				// Set default values 
-				user1.DOB = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
-				user1.Bio = "Bio goes here"
-				user1.Avatar = ""
-	
-				err = repository.CreateUser(db, user1)
-				if err != nil{
-					fmt.Printf("Error parsing user info: %s\n", err.Error())
-					return
+		if err != nil && err == sql.ErrNoRows {
+			// User doesn't exist, create new user
+			user1 := models.User{
+				Name:   userInfo.Name,
+				Email:  userInfo.Email,
+				DOB:    time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC),
+				Bio:    "Bio goes here",
+			}
+
+			// Download the avatar image from Google
+			pictureResp, err := http.Get(userInfo.Picture)
+			if err == nil {
+				defer pictureResp.Body.Close()
+
+				// Generate a unique filename for the avatar
+				uuid, err := uuid.NewRandom()
+				if err == nil {
+					filename := uuid.String() + ".jpg" // Assuming jpg format
+
+					// Save the image to the server
+					filePath := filepath.Join("uploads", filename)
+					dst, err := os.Create(filePath)
+					if err == nil {
+						defer dst.Close()
+						_, err = io.Copy(dst, pictureResp.Body)
+						if err == nil {
+							// Assign avatar path to the user
+							user1.Avatar = filename
+						}
 					}
-				}else{
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					w.Header().Set("HX-Location", "/register")
-					w.WriteHeader(http.StatusNoContent)
 				}
 			}
-			
-		// Create session and authenticate the user 
-		session, err := store.Get(r, "logged-in-user")
-		if err != nil{
+
+			//Creating New User Profile
+			fmt.Println("---Creating New User---")
+			err = repository.CreateGoogleUser(db, user1)
+			if err != nil {
+				http.Error(w, "Error creating user", http.StatusInternalServerError)
+				return
+			}
+
+			// Retrieve the newly created user
+			user, err = repository.GetUserByEmail(db, userInfo.Email)
+			if err != nil {
+				http.Error(w, "Error retrieving user", http.StatusInternalServerError)
+				return
+			}
+		} else if err != nil {
 			http.Error(w, "Server error", http.StatusInternalServerError)
-			return 
-		}
-		session.Values["user_id"] = user.Id
-		if err := session.Save(r, w);err != nil{
-			http.Error(w, "Error saving session", http.StatusInternalServerError)
-			return 
+			return
 		}
 
-		// Set HX-Location header and return 204 No Content status 
-		w.Header().Set("HX-Location", "/")
-		w.WriteHeader(http.StatusNoContent)
+		// Create and save the session
+		session, err := store.Get(r, "logged-in-user")
+		if err != nil {
+			http.Error(w, "Error creating session", http.StatusInternalServerError)
+			return
+		}
+
+		session.Values["user_id"] = user.Id
+		err = session.Save(r, w)
+		if err != nil {
+			http.Error(w, "Error saving session", http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Println("-----redirecting-----")
+		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
