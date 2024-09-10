@@ -1,0 +1,12 @@
+{{ define "contactPermission" }}
+{{template "header" .}}
+    <h4>!! Need Permission Before Accessing your Data !!</h4>
+    <button id="Permission" class="btn btn-primary">Give Permission</button>
+{{template "footer"}}
+    <script>
+        document.getElementById('Permission').addEventListener('click', function() {
+            // Redirect to the Google Contact Authorization endpoint
+            window.location.href = 'http://localhost:4000/RequestContactsAuth'; 
+        });
+    </script>
+{{ end }}

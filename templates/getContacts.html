@@ -1,0 +1,14 @@
+{{ define "getContacts" }}
+{{template "header" .}}
+    <h4>Phone Directory</h4>
+    <form class="form" hx-get="/get-contacts" hx-target="#results">
+        <div class="mb-3">
+            <input type="text" class="search-bar" placeholder="Search by name..." name="query">
+        </div>
+        <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+
+    <!-- Table to display search results -->
+    <div id="results"></div>
+{{template "footer"}}
+{{ end }} 

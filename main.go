@@ -80,7 +80,16 @@ func main()  {
 	grouter.HandleFunc("/auth/google", handlers.HandleGoogleLogin).Methods("GET")
 	//handle Google callback {process}
 	grouter.HandleFunc("/auth/google/callback", handlers.GoogleCallback(db, tmpl, Store)).Methods("GET")
-	
+	//Handle the Req Contact Permission Page
+	grouter.HandleFunc("/request-contacts-page", handlers.RequestContactsPage(db, tmpl, Store)).Methods("GET")
+	//Handle the Process of Requesting Contact Perssimission
+	grouter.HandleFunc("/RequestContactsAuth", handlers.RequestContactsAuthorizationHandler(db, Store))
+	//Handle the Google Contacts Callback {process}
+	grouter.HandleFunc("/ContactsCallback", handlers.GoogleContactsCallbackHandler(db, Store))
+	// Handle the Contact Page 
+	grouter.HandleFunc("/getContact", handlers.ContactPage(db, tmpl, Store)).Methods("GET")
+	//Fetches the google contacts from the google on clicking on the search bar
+	grouter.HandleFunc("/get-contacts", handlers.GetContactsHandler(db, Store))
 	fmt.Println("----Server is running on PORT:4000----")
 	http.ListenAndServe(":4000", grouter)
 }

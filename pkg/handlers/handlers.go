@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"text/template"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/snipep/Profile_Managment_Application/pkg/models"
 	"github.com/snipep/Profile_Managment_Application/pkg/repository"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 )
 var Oauthstring = "qwertyuio"
 
@@ -430,7 +432,7 @@ func GoogleCallback(db *sql.DB, tmpl *template.Template, store *sessions.CookieS
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}		
-
+		fmt.Println("userinfoo: ", string(contentbin))
 		// Parse the JSON response into GoogleUserInfo struct
 		var userInfo models.GoogleUserInfo
 		err = json.Unmarshal(contentbin, &userInfo)
@@ -439,7 +441,7 @@ func GoogleCallback(db *sql.DB, tmpl *template.Template, store *sessions.CookieS
 			http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 			return
 		}
-    	// fmt.Printf("User Info: %+v\n", userInfo)
+    	fmt.Printf("User Info: %+v\n", userInfo)
 
 		// Check if user exists in DB
 		user, err := repository.GetUserByEmail(db, userInfo.Email)
@@ -513,3 +515,147 @@ func GoogleCallback(db *sql.DB, tmpl *template.Template, store *sessions.CookieS
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
+
+func ContactPage(db *sql.DB, tmpl *template.Template, store *sessions.CookieStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request){
+		user, _ := CheckLoggedIn(w, r, store, db)
+
+		if err := tmpl.ExecuteTemplate(w, "getContacts", user);err != nil{
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}
+
+func RequestContactsPage(db *sql.DB, tmpl *template.Template, store *sessions.CookieStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request){
+		user, _ := CheckLoggedIn(w, r, store, db)
+
+		if err := tmpl.ExecuteTemplate(w, "contactPermission", user);err != nil{
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}
+
+func RequestContactsAuthorizationHandler(db *sql.DB, store *sessions.CookieStore) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+		// currentUserProfile, _ := CheckLoggedIn(w, r, store, db)
+        // Retrieve the user's session to ensure they are logged in
+        session, err := store.Get(r, "logged-in-user")
+        if err != nil || session.Values["user_id"] == nil {
+            http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
+            return
+        }
+		// Modify the RedirectURL for this specific OAuth flow
+        Oauth.Oauth2Config.RedirectURL = "http://localhost:4000/ContactsCallback"
+
+		fmt.Println("----google contact------")
+        // Redirect to Google's OAuth2 consent page to request access to contacts
+		url := Oauth.Oauth2Config.AuthCodeURL(Oauthstring, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("scope", "https://www.googleapis.com/auth/contacts.readonly"))
+		// url := Oauth.Oauth2Config.AuthCodeURL(Oauthstring, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("scope", "https://www.googleapis.com/auth/contacts.readonly"), oauth2.SetAuthURLParam("login_hint", currentUserProfile.Email))
+
+        http.Redirect(w, r, url, http.StatusFound)
+    }
+}
+
+func GoogleContactsCallbackHandler(db *sql.DB, store *sessions.CookieStore) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("----google contact callback------")
+        // Ensure the OAuth state is correct
+        if r.FormValue("state") != Oauthstring {
+            http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+            return
+        }
+
+        // Exchange the code for an access token
+        token, err := Oauth.Oauth2Config.Exchange(context.Background(), r.FormValue("code"))
+        if err != nil {
+            http.Error(w, "Failed to get contacts authorization", http.StatusInternalServerError)
+            return
+        }
+
+		//Retrive the session and tokens
+        session, err := store.Get(r, "logged-in-user")
+        if err != nil {
+			http.Error(w, "Error retrieving session", http.StatusInternalServerError)
+            return
+        }
+        session.Values["contacts_access_token"] = token.AccessToken
+		session.Values["contacts_refresh_token"] = token.RefreshToken
+			
+		// Save the access token in the session
+        err = session.Save(r, w)
+        if err != nil {
+            http.Error(w, "Error saving session", http.StatusInternalServerError)
+            return
+        }
+
+        // Redirect the user back to the page to fetch their contacts
+        http.Redirect(w, r, "/getContact", http.StatusFound)
+    }
+}
+
+func GetContactsHandler(db *sql.DB, store *sessions.CookieStore) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        // Get the search query from the form input
+        searchQuery := r.URL.Query().Get("query")
+        if searchQuery == "" {
+            http.Error(w, "No search query provided", http.StatusBadRequest)
+            return
+        }
+
+        session, err := store.Get(r, "logged-in-user")
+        if err != nil {
+            http.Error(w, "Error retrieving session", http.StatusInternalServerError)
+            return
+        }
+
+        accessToken, ok := session.Values["contacts_access_token"].(string)
+        if !ok {
+            http.Error(w, "No contacts access token found", http.StatusUnauthorized)
+            return
+        }
+
+        // Use the access token to get contacts
+        contactsResp, err := http.Get("https://people.googleapis.com/v1/people/me/connections?personFields=names,phoneNumbers&access_token=" + accessToken)
+        if err != nil {
+            http.Error(w, "Error fetching contacts", http.StatusInternalServerError)
+            return
+        }
+        defer contactsResp.Body.Close()
+
+        var contactsResponse struct {
+            Connections []struct {
+                Names        []struct {
+                    DisplayName string `json:"displayName"`
+                } `json:"names"`
+                PhoneNumbers []struct {
+                    Value string `json:"value"`
+                } `json:"phoneNumbers"`
+            } `json:"connections"`
+        }
+
+        err = json.NewDecoder(contactsResp.Body).Decode(&contactsResponse)
+        if err != nil {
+            http.Error(w, "Error decoding contacts response", http.StatusInternalServerError)
+            return
+        }
+
+        // Filter contacts by DisplayName
+        var filteredContacts []map[string]string
+        for _, contact := range contactsResponse.Connections {
+            if len(contact.Names) > 0 && strings.Contains(strings.ToLower(contact.Names[0].DisplayName), strings.ToLower(searchQuery)) {
+                filteredContacts = append(filteredContacts, map[string]string{
+                    "displayName": contact.Names[0].DisplayName,
+                    "phoneNumber": contact.PhoneNumbers[0].Value,
+                })
+            }
+        }
+
+        // Return results as HTML table rows
+        w.Header().Set("Content-Type", "text/html")
+        for _, contact := range filteredContacts {
+            fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td></tr>`, contact["displayName"], contact["phoneNumber"])
+        }
+    }
+}
+

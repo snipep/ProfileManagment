@@ -1,12 +1,15 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/snipep/Profile_Managment_Application/pkg/Oauth"
 	"github.com/snipep/Profile_Managment_Application/pkg/models"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 )
 
 func GetAllUsers(db *sql.DB,) ([]models.User, error) {
@@ -128,4 +131,13 @@ func CreateGoogleUser( db *sql.DB, user models.User) error {
 		return err
 	}
 	return nil
+}
+
+func refreshAccessToken(token *oauth2.Token) (*oauth2.Token, error) {
+    tokenSource := Oauth.Oauth2Config.TokenSource(context.Background(), token)
+    newToken, err := tokenSource.Token()
+    if err != nil {
+        return nil, err
+    }
+    return newToken, nil
 }
