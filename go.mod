@@ -13,6 +13,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
 	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
